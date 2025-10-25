@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<knob-settings>
+    <cfg.knob-meta.mgmt>
+        <cfg.useridd.query-unknown-ip>
+            <value>0</value>
+            <cli>debug user-id query-unknown-ip</cli>
+            <default>0</default>
+            <details>whether to query agent for unknown IPs</details>
+        </cfg.useridd.query-unknown-ip>
+    </cfg.knob-meta.mgmt>
+</knob-settings>
