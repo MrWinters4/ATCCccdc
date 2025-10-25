@@ -1,0 +1,97 @@
+# =========================
+# Palo Alto Firewall Secure Baseline + Logging + Splunk
+# Updated for 2025 MWCCDC
+# =========================
+
+configure
+
+# 1. ADMIN USERS & PASSWORDS
+delete mgt-config users
+set mgt-config users admin password ATCCccdc2026!
+set mgt-config users admin permissions role-based superuser
+set mgt-config users blueadmin password ATCCccdc2026!
+set mgt-config users blueadmin permissions role-based superuser
+set mgt-config users blueadmin require-audit-comment yes
+set mgt-config users admin require-audit-comment yes
+
+# 2. MANAGEMENT ACCESS RESTRICTIONS
+set deviceconfig system service disable-telnet yes
+set deviceconfig system service disable-http yes
+set deviceconfig system service disable-ssh yes
+set deviceconfig system service disable-https no
+set deviceconfig system permitted-ip 172.20.242.0/24
+
+# 3. HOSTNAME, MGMT INTERFACE, DNS
+set deviceconfig system hostname PA-FW-BlueTeam
+set deviceconfig system ip-address 172.20.242.150
+set deviceconfig system netmask 255.255.255.0
+set deviceconfig system default-gateway 172.20.242.254
+set deviceconfig system dns-setting servers primary 8.8.8.8 secondary 172.20.240.23
+
+# 4. ENABLE LOGGING & AUDIT TRAIL
+set deviceconfig setting management audit-enabled yes
+set deviceconfig setting management audit-detail yes
+set deviceconfig setting management commit-audit-log yes
+set deviceconfig setting management audit-comment yes
+set deviceconfig system logging-level info
+
+# 5. SPLUNK & SYSLOG FORWARDING
+set deviceconfig system syslog-server 172.20.242.20 transport tcp port 9997 format default facility local7
+set deviceconfig system syslog-server 172.20.242.20 log-type system
+set deviceconfig system syslog-server 172.20.242.20 log-type config
+set deviceconfig system syslog-server 172.20.242.20 log-type threat
+set deviceconfig system syslog-server 172.20.242.20 log-type traffic
+set deviceconfig system syslog-server 172.20.242.20 log-type auth
+set deviceconfig system syslog-server 172.20.242.20 log-type alarm
+
+# 6. NETWORK INTERFACES (based on competition topology)
+set network interface ethernet ethernet1/1 layer3 ip 172.20.242.150/24 comment "LAN – Trust"
+set network interface ethernet ethernet1/1 zone trust
+
+set network interface ethernet ethernet1/2 layer3 ip 172.20.240.1/24 comment "DMZ – Untrust"
+set network interface ethernet ethernet1/2 zone untrust
+
+set network interface ethernet ethernet1/3 layer3 ip 172.31.26.2/29 comment "External WAN"
+set network interface ethernet ethernet1/3 zone external
+
+set network interface ethernet1/4 layer3 ip 172.20.241.254/24 comment "User Network"
+set network interface ethernet ethernet1/4 zone user
+
+# 7. DEFINE ZONES
+set zone trust network layer3
+set zone untrust network layer3
+set zone external network layer3
+set zone user network layer3
+
+# 8. STATIC ROUTES
+set network virtual-router VR1 interface ethernet1/1
+set network virtual-router VR1 interface ethernet1/2
+set network virtual-router VR1 interface ethernet1/3
+set network virtual-router VR1 interface ethernet1/4
+set network virtual-router VR1 routing-table ip static-route default destination 0.0.0.0/0 nexthop ip-address 172.31.26.1 interface ethernet1/3 metric 10
+
+# 9. DHCP SERVER (User Network)
+set network dhcp interface ethernet1/4 server enable yes
+set network dhcp interface ethernet1/4 server gateway 172.20.242.254
+set network dhcp interface ethernet1/4 server lease timeout 1440
+set network dhcp interface ethernet1/4 server dns primary 8.8.8.8 secondary 8.8.4.4
+set network dhcp interface ethernet1/4 server ip-pool 172.20.242.101-172.20.242.150
+
+# 10. SECURITY POLICY RULES (only necessary CCDC services)
+delete rulebase security rules all
+
+set rulebase security rules Allow-DNS from trust to untrust source any destination any application dns service application-default action allow log-start yes log-end yes
+set rulebase security rules Allow-HTTP from trust to untrust source any destination any application web-browsing service application-default action allow log-start yes log-end yes
+set rulebase security rules Allow-HTTPS from trust to untrust source any destination any application ssl service application-default action allow log-start yes log-end yes
+set rulebase security rules Allow-SMTP from trust to untrust source any destination any application smtp service application-default action allow log-start yes log-end yes
+set rulebase security rules Allow-POP3 from trust to untrust source any destination any application pop3 service application-default action allow log-start yes log-end yes
+set rulebase security rules Allow-FTP from trust to untrust source any destination any application ftp service application-default action allow log-start yes log-end yes
+set rulebase security rules Allow-ICMP from trust to untrust source any destination any application ping service application-default action allow log-start yes log-end yes
+set rulebase security rules Deny-All from any to any source any destination any application any service any action deny log-start yes log-end yes description "Default deny all traffic with full logging"
+
+# 11. NAT RULES
+set rulebase nat rules NAT-Trust-to-Untrust from trust to untrust source any destination any service any to-interface ethernet1/2 source-translation dynamic-ip-and-port interface-address interface ethernet1/2
+
+# 12. COMMIT & SAVE
+commit description "CCDC 2025 Secure Config – Passwords rotated, ports restricted, Splunk logging enabled"
+exit
