@@ -1,0 +1,130 @@
+!
+! =============================
+! Cisco Firepower Threat Defense (FTD)
+! MWCCDC 2025 Blue Team Secure Baseline
+! =============================
+
+configure terminal
+
+! 1. CHANGE ADMIN PASSWORDS
+username admin password <NEW_SECURE_PASSWORD> privilege 15
+username blueadmin password <ANOTHER_SECURE_PASSWORD> privilege 15
+no username cisco
+username blueadmin roles admin
+
+! Enforce password policy
+password-policy minimum-length 12
+password-policy complexity enable
+password-policy lifetime 90
+password-policy history 5
+
+! 2. HOSTNAME & DOMAIN
+hostname FTD-BlueTeam
+domain-name blue.local
+
+! 3. MANAGEMENT ACCESS RESTRICTIONS
+! (Allow only LAN range access to management interfaces)
+management-access inside
+http server enable
+http 172.20.242.0 255.255.255.0 inside
+no http 0.0.0.0 0.0.0.0 outside
+ssh 172.20.242.0 255.255.255.0 inside
+no ssh 0.0.0.0 0.0.0.0 outside
+ssh timeout 10
+telnet timeout 0
+no telnet 0.0.0.0 0.0.0.0 outside
+aaa authentication ssh console LOCAL
+
+! 4. TIMEZONE & NTP
+clock timezone CST -6
+ntp server 172.20.242.1
+ntp authenticate
+
+! 5. INTERFACE CONFIGURATION (Based on 2025 CCDC topology)
+interface GigabitEthernet0/0
+ nameif outside
+ security-level 0
+ ip address 172.20.240.200 255.255.255.0
+ no shutdown
+
+interface GigabitEthernet0/1
+ nameif inside
+ security-level 100
+ ip address 172.20.242.1 255.255.255.0
+ no shutdown
+
+interface GigabitEthernet0/2
+ nameif dmz
+ security-level 50
+ ip address 172.31.26.2 255.255.255.248
+ no shutdown
+
+! 6. ACCESS CONTROL POLICIES
+access-list OUTSIDE-IN extended permit icmp any any
+access-list OUTSIDE-IN extended permit tcp any any eq 80
+access-list OUTSIDE-IN extended permit tcp any any eq 443
+access-list OUTSIDE-IN extended permit tcp any any eq 25
+access-list OUTSIDE-IN extended permit tcp any any eq 110
+access-list OUTSIDE-IN extended permit tcp any any eq 21
+access-list OUTSIDE-IN extended permit udp any any eq 53
+access-list OUTSIDE-IN extended permit tcp any any eq 53
+
+! Deny all other inbound traffic
+access-list OUTSIDE-IN extended deny ip any any log
+access-group OUTSIDE-IN in interface outside
+
+! Allow outbound traffic only for required services
+access-list INSIDE-OUT extended permit tcp any any eq 80
+access-list INSIDE-OUT extended permit tcp any any eq 443
+access-list INSIDE-OUT extended permit tcp any any eq 25
+access-list INSIDE-OUT extended permit tcp any any eq 110
+access-list INSIDE-OUT extended permit tcp any any eq 21
+access-list INSIDE-OUT extended permit udp any any eq 53
+access-list INSIDE-OUT extended permit icmp any any
+access-list INSIDE-OUT extended deny ip any any log
+access-group INSIDE-OUT in interface inside
+
+! 7. NAT CONFIGURATION
+object network INSIDE-NET
+ subnet 172.20.242.0 255.255.255.0
+ nat (inside,outside) dynamic interface
+
+! 8. LOGGING CONFIGURATION
+logging enable
+logging timestamp
+logging buffer-size 8192
+logging buffered informational
+logging trap informational
+logging monitor informational
+logging asdm informational
+
+! 9. SPLUNK LOG FORWARDING (TCP 9997)
+logging host inside 172.20.242.20 tcp/9997
+logging facility local7
+logging source-interface inside
+logging device-id hostname
+logging permit-hostdown
+logging queue-limit 10000
+
+! 10. INTRUSION & THREAT PREVENTION (optional baseline)
+policy-map global_policy
+ class inspection_default
+  inspect dns maximum-length 512
+  inspect ftp
+  inspect icmp
+  inspect http
+  inspect smtp
+  inspect pop3
+  inspect ssl
+service-policy global_policy global
+
+! 11. AUDIT TRAIL AND COMMIT LOGGING
+! (Track all administrative configuration changes)
+logging message 111008 level informational
+logging message 111009 level informational
+logging message 111010 level informational
+
+! 12. SAVE CONFIGURATION
+write memory
+end
+!
